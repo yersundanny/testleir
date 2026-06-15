@@ -3,59 +3,59 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>🌿 실시간 멀티 스마트 팜 자동 관제실</title>
+    <title>Leir : 실시간 멀티 환경 관제 시스템</title>
     <script src="https://unpkg.com/mqtt/dist/mqtt.min.js"></script>
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
     <style>
         :root {
-            --primary: #1b5e20;
-            --bg: #f4f6f9;
+            --primary: #113f2f; /* Leir 프로젝트 전용 딥 그린 */
+            --accent: #2e7d32;
+            --bg: #f4f7f6;
             --card-bg: #ffffff;
         }
         * { box-sizing: border-box; margin: 0; padding: 0; }
         body { font-family: -apple-system, BlinkMacSystemFont, sans-serif; background: var(--bg); padding: 20px; }
-        header { text-align: center; margin-bottom: 20px; }
-        h1 { color: var(--primary); font-size: 26px; }
-        .subtitle { color: #546e7a; font-size: 13px; margin-top: 4px; }
+        header { text-align: center; margin-bottom: 25px; }
+        h1 { color: var(--primary); font-size: 28px; font-weight: 800; letter-spacing: -0.5px; }
+        .subtitle { color: #607d8b; font-size: 13px; margin-top: 6px; }
         
         .counter-badge {
-            background: #e3f2fd; color: #0d47a1; padding: 6px 16px; border-radius: 20px;
-            display: inline-block; margin: 10px 0; font-weight: bold; font-size: 14px;
-            box-shadow: 0 2px 5px rgba(0,0,0,0.05);
+            background: #e8f5e9; color: var(--accent); padding: 6px 18px; border-radius: 20px;
+            display: inline-block; margin: 12px 0; font-weight: bold; font-size: 14px;
+            box-shadow: 0 2px 8px rgba(17,63,47,0.06);
         }
 
         #map {
-            width: 100%; height: 350px; border-radius: 14px; 
-            box-shadow: 0 4px 15px rgba(0,0,0,0.06); margin-bottom: 25px; border: 1px solid #ddd;
+            width: 100%; height: 380px; border-radius: 16px; 
+            box-shadow: 0 4px 20px rgba(0,0,0,0.06); margin-bottom: 30px; border: 1px solid #e0e0e0;
         }
 
-        /* 📊 접속한 학생 수만큼 카드가 무한히 늘어나는 바둑판 그리드 */
         .farm-grid {
             display: grid; 
-            grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); 
-            gap: 20px; 
+            grid-template-columns: repeat(auto-fill, minmax(290px, 1fr)); 
+            gap: 22px; 
             margin-bottom: 25px;
         }
         
-        /* 자동으로 생성될 학생 전용 대시보드 카드 디자인 */
         .student-card {
-            background: var(--card-bg); border-radius: 14px; padding: 22px;
-            box-shadow: 0 4px 12px rgba(0,0,0,0.04); border-top: 6px solid #cfd8dc;
+            background: var(--card-bg); border-radius: 14px; padding: 24px;
+            box-shadow: 0 4px 15px rgba(0,0,0,0.03); border-top: 6px solid #cfd8dc;
             animation: popIn 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275);
         }
-        @keyframes popIn { from { opacity: 0; transform: scale(0.9); } to { opacity: 1; transform: scale(1); } }
+        @keyframes popIn { from { opacity: 0; transform: scale(0.92); } to { opacity: 1; transform: scale(1); } }
 
-        .student-name { font-size: 18px; font-weight: bold; margin-bottom: 15px; color: #263238; display: flex; justify-content: space-between; align-items: center; }
-        .status-tag { font-size: 11px; padding: 3px 8px; border-radius: 10px; color: white; font-weight: bold; }
+        .student-name { font-size: 18px; font-weight: bold; margin-bottom: 16px; color: #263238; display: flex; justify-content: space-between; align-items: center; }
+        .status-tag { font-size: 11px; padding: 3px 9px; border-radius: 12px; color: white; font-weight: bold; }
         
-        .data-row { display: flex; justify-content: space-between; margin-bottom: 10px; padding-bottom: 6px; border-bottom: 1px dashed #f0f0f0; }
+        .data-row { display: flex; justify-content: space-between; margin-bottom: 12px; padding-bottom: 8px; border-bottom: 1px dashed #f0f0f0; }
         .data-label { font-size: 14px; color: #78909c; }
-        .data-value { font-size: 22px; font-weight: bold; }
+        .data-value { font-size: 24px; font-weight: bold; }
 
         .terminal-container {
-            background: #1e1e1e; color: #b0bec5; border-radius: 12px; padding: 15px;
-            font-family: monospace; font-size: 12px; text-align: left; max-width: 1000px; margin: 0 auto;
+            background: #1a1a1a; color: #90a4ae; border-radius: 14px; padding: 18px;
+            font-family: monospace; font-size: 12px; text-align: left; max-width: 1100px; margin: 40px auto 0 auto;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.08);
         }
         .terminal-body { height: 90px; overflow-y: auto; white-space: pre-wrap; }
     </style>
@@ -63,36 +63,31 @@
 <body>
 
     <header>
-        <h1>🌿 실시간 멀티 스마트 팜 관제실</h1>
-        <div class="subtitle">학생들이 보드를 연결하면 실시간으로 개별 대시보드 페이지(카드)가 자동 추가됩니다.</div>
-        <div class="counter-badge" id="studentCounter">👥 연결된 총 스마트 화분: 0대</div>
+        <h1>Leir : 환경 통합 관제 센터</h1>
+        <div class="subtitle">배포된 무선 모듈이 실시간으로 동기화되어 통합 에코시스템 대시보드를 구성합니다.</div>
+        <div class="counter-badge" id="studentCounter">🌿 활성화된 Leir 노드: 0대</div>
     </header>
 
     <div id="map"></div>
-
     <div class="farm-grid" id="farmGrid"></div>
 
     <div class="terminal-container">
-        <div style="color: #fff; margin-bottom: 6px; font-weight: bold;">🛰️ 글로벌 IoT 네트워크 패킷 스트림</div>
-        <div class="terminal-body" id="terminalBody">원격 무선 노드들의 Wi-Fi 신호를 대기 중입니다...</div>
+        <div style="color: #fff; margin-bottom: 8px; font-weight: bold; letter-spacing: 0.5px;">🛰️ Leir 클라우드 네트워크 스트림 로그</div>
+        <div class="terminal-body" id="terminalBody">시스템 연결 및 데이터 신호를 대기 중입니다...</div>
     </div>
 
     <script>
-        // 아두이노 코드의 전송 채널과 100% 일치
-        const MQTT_TOPIC = "yousun/smartfarm/c3_multi"; 
+        const MQTT_TOPIC = "leir/ecosystem/multi_live"; 
         
         const farmGrid = document.getElementById('farmGrid');
         const terminalBody = document.getElementById('terminalBody');
         const studentCounter = document.getElementById('studentCounter');
         
         let map;
-        let userLat = 37.5665; // 기본 위도 (서울)
-        let userLng = 126.9780; // 기본 경도
-        
-        // 딕셔너리를 활용해 접속한 기기 목록을 실시간 추적 메모리에 보관
+        let userLat = 37.5665; 
+        let userLng = 126.9780; 
         const activeDevices = {};
 
-        // 1. 📍 브라우저 GPS 획득 및 지도 초기화
         if (navigator.geolocation) {
             navigator.geolocation.getCurrentPosition((position) => {
                 userLat = position.coords.latitude;
@@ -107,84 +102,71 @@
                 attribution: '© OpenStreetMap'
             }).addTo(map);
 
-            // 본인(관제실) 위치 파란색 마커 고정
-            L.circle([userLat, userLng], { radius: 12, color: '#0d47a1', fillColor: '#2196f3', fillOpacity: 0.5 }).addTo(map);
+            L.circle([userLat, userLng], { radius: 12, color: '#113f2f', fillColor: '#2e7d32', fillOpacity: 0.4 }).addTo(map);
         }
 
-        // 2. ☁️ 무료 오픈 IoT 서버망 연결 및 토픽 체널 구독(Subscribe)
         const client = mqtt.connect('wss://broker.emqx.io:8084/mqtt');
         
         client.on('connect', () => {
-            appendLog("[SYSTEM]: 글로벌 IoT 클라우드 채널 오픈 완료. 실시간 매핑을 시작합니다.");
+            appendLog("[SYSTEM]: Leir 네트워크 메인 서버 동기화 완료.");
             client.subscribe(MQTT_TOPIC);
         });
 
-        // 3. ⚡ [핵심 엔진] 와이파이망을 타고 패킷이 들어올 때 실행되는 실시간 카드/핀 자동 복사 증설 로직
         client.on('message', (topic, message) => {
             if (topic === MQTT_TOPIC) {
                 try {
                     const data = JSON.parse(message.toString().trim());
-                    if (!data.id) return; // 이름표 없는 패킷 필터링
+                    if (!data.id) return; 
                     
-                    appendLog(`[수신] ID: ${data.id} | 습도: ${data.moisture}% | 온도: ${data.temperature}°C`);
+                    appendLog(`[데이터 스트림] ${data.id} ➔ 토양 습도: ${data.moisture}% | 토양 온도: ${data.temperature}°C`);
                     
-                    // 수분 상태 스케일 판정 (빨강/노랑/초록)
-                    let config = { color: "#4caf50", text: "충분 (Good)" }; // 초록
+                    let config = { color: "#2e7d32", text: "안정 (Good)" }; 
                     if (data.moisture <= 30) {
-                        config = { color: "#e53935", text: "건조 (Dry)" }; // 빨강
+                        config = { color: "#d32f2f", text: "주의 (Dry)" }; 
                     } else if (data.moisture <= 60) {
-                        config = { color: "#ffb300", text: "보통 (Moist)" }; // 노랑
+                        config = { color: "#f57c00", text: "모니터링 (Moist)" }; 
                     }
 
-                    const tempStr = (data.temperature === -127 || data.temperature === 85) ? "센서 오류" : `${data.temperature.toFixed(1)}°C`;
+                    const tempStr = (data.temperature === -127 || data.temperature === 85) ? "센서 확인" : `${data.temperature.toFixed(1)}°C`;
 
-                    // [기능 A] 지도 위에 마커가 없다면 새로 생성, 있으면 색상 업데이트
                     if (!activeDevices[data.id]) {
-                        // 한 교실 안에서 좌표가 겹치는 문제를 예방하기 위한 랜덤 오프셋
-                        const rLat = userLat + (Math.random() - 0.5) * 0.0018;
-                        const rLng = userLng + (Math.random() - 0.5) * 0.0018;
+                        const rLat = userLat + (Math.random() - 0.5) * 0.0016;
+                        const rLng = userLng + (Math.random() - 0.5) * 0.0016;
 
                         const marker = L.circleMarker([rLat, rLng], {
                             radius: 11, fillColor: config.color, color: "#ffffff", weight: 2, fillOpacity: 0.9
                         }).addTo(map);
 
-                        // 메모리에 기기 등록
                         activeDevices[data.id] = { marker: marker };
                         
-                        // 👥 상단 총 접속 기기 개수 라벨 업데이트
                         const totalConnected = Object.keys(activeDevices).length;
-                        studentCounter.innerText = `👥 연결된 총 스마트 화분: ${totalConnected}대`;
+                        studentCounter.innerText = `🌿 활성화된 Leir 노드: ${totalConnected}대`;
                     }
                     
-                    // 지도 핀 색상 및 실시간 팝업 내용 동기화
                     activeDevices[data.id].marker.setStyle({ fillColor: config.color });
-                    activeDevices[data.id].marker.bindPopup(`<b>🪴 기기명: ${data.id}</b><br><span style="color:${config.color}; font-weight:bold;">상태: ${config.text}</span><br>습도: ${data.moisture}% / 온도: ${tempStr}`);
+                    activeDevices[data.id].marker.bindPopup(`<b>📦 기기 노드: ${data.id}</b><br><span style="color:${config.color}; font-weight:bold;">상태: ${config.text}</span><br>습도: ${data.moisture}% / 온도: ${tempStr}`);
 
-                    // [기능 B] 접속한 학생별 개별 대시보드 카드 자동 매핑/증설
                     updateStudentCardPage(data, config, tempStr);
 
                 } catch (e) { }
             }
         });
 
-        // 학생 개별 카드 동적 핸들러 (학생 수만큼 페이지 요소가 증설됨)
         function updateStudentCardPage(data, config, tempStr) {
-            const domId = `page-card-${btoa(encodeURIComponent(data.id)).replace(/=/g, '')}`;
+            const domId = `leir-card-${btoa(encodeURIComponent(data.id)).replace(/=/g, '')}`;
             let cardElement = document.getElementById(domId);
 
-            // 존재하지 않던 새로운 학생 기기라면 대시보드 페이지 그리드에 카드 요소를 새로 만들어 박아넣음
             if (!cardElement) {
                 cardElement = document.createElement('div');
                 cardElement.id = domId;
                 cardElement.className = 'student-card';
-                farmGrid.appendChild(cardElement); // 바둑판 배열에 동적 추가
+                farmGrid.appendChild(cardElement); 
             }
 
-            // 실시간 상단 보더 라인 칼라 스위칭 및 내부 데이터 새로고침
             cardElement.style.borderTopColor = config.color;
             cardElement.innerHTML = `
                 <div class="student-name">
-                    <span>🪴 ${data.id}</span>
+                    <span>📦 ${data.id}</span>
                     <span class="status-tag" style="background:${config.color}">${config.text}</span>
                 </div>
                 <div class="data-row">
@@ -202,7 +184,7 @@
             const now = new Date();
             const logLine = document.createElement('div');
             logLine.style.marginBottom = "2px";
-            logLine.innerHTML = `<span style="color:#757575">[${now.toLocaleTimeString()}]</span> ${text}`;
+            logLine.innerHTML = `<span style="color:#607d8b">[${now.toLocaleTimeString()}]</span> ${text}`;
             terminalBody.appendChild(logLine);
             terminalBody.scrollTop = terminalBody.scrollHeight;
         }
