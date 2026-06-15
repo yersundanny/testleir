@@ -3,254 +3,183 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>스마트 팜 실시간 데이터 방송국</title>
+    <title>🗺️ 스마트 팜 위치 기반 실시간 관제 센터</title>
     <script src="https://unpkg.com/mqtt/dist/mqtt.min.js"></script>
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
     <style>
         :root {
-            --primary: #2e7d32;
-            --secondary: #1565c0;
-            --dark: #263238;
-            --bg: #f8f9fa;
-            --card-bg: #ffffff;
+            --primary: #1b5e20;
+            --bg: #f5f7fa;
         }
         * { box-sizing: border-box; margin: 0; padding: 0; }
-        body {
-            font-family: -apple-system, BlinkMacSystemFont, sans-serif;
-            background-color: var(--bg); color: var(--dark); padding: 20px; text-align: center;
+        body { font-family: -apple-system, BlinkMacSystemFont, sans-serif; background: var(--bg); padding: 20px; }
+        header { text-align: center; margin-bottom: 20px; }
+        h1 { color: var(--primary); font-size: 24px; }
+        .subtitle { color: #546e7a; font-size: 13px; margin-top: 4px; }
+
+        /* 📍 지도 레이아웃 스타일 */
+        #map {
+            width: 100%; height: 400px; border-radius: 14px; 
+            box-shadow: 0 4px 15px rgba(0,0,0,0.08); margin-bottom: 25px; border: 1px solid #ddd;
         }
-        header { margin-bottom: 25px; }
-        h1 { color: var(--primary); font-size: 24px; margin-bottom: 5px; }
-        .subtitle { color: #607d8b; font-size: 14px; }
+
+        .farm-grid {
+            display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 20px;
+        }
+        .student-card {
+            background: white; border-radius: 12px; padding: 20px;
+            box-shadow: 0 4px 10px rgba(0,0,0,0.04); border-top: 6px solid #ccc;
+        }
+        .student-name { font-weight: bold; font-size: 16px; margin-bottom: 12px; display: flex; justify-content: space-between; }
+        .status-badge { font-size: 11px; padding: 2px 8px; border-radius: 10px; color: white; }
+        .data-row { display: flex; justify-content: space-between; margin-bottom: 8px; font-size: 14px; }
         
-        .status-bar {
-            background: #e0f2f1; color: #004d40; padding: 10px; 
-            border-radius: 8px; display: inline-block; margin-bottom: 20px; font-weight: bold; font-size: 14px;
-        }
-        
-        .controls { display: flex; justify-content: center; gap: 15px; margin-bottom: 25px; }
-        .btn {
-            padding: 12px 24px; font-size: 15px; font-weight: bold; 
-            border: none; border-radius: 8px; cursor: pointer; box-shadow: 0 2px 4px rgba(0,0,0,0.1);
-        }
-        #connectBtn { background-color: var(--primary); color: white; }
-        #connectBtn.connected { background-color: #757575; }
-
-        .grid-container {
-            display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 20px; margin-bottom: 25px;
-        }
-        .card {
-            background: var(--card-bg); border-radius: 12px; padding: 25px;
-            box-shadow: 0 4px 6px rgba(0,0,0,0.05); border: 1px solid #eee;
-        }
-        .value { font-size: 48px; font-weight: 800; margin-bottom: 5px; }
-        .moisture-text { color: #0288d1; }
-        .temp-text { color: #e65100; }
-        .unit { font-size: 14px; color: #90a4ae; }
-
-        .chart-container {
-            background: var(--card-bg); border-radius: 12px; padding: 20px;
-            box-shadow: 0 4px 6px rgba(0,0,0,0.05); border: 1px solid #eee; margin-bottom: 25px;
-        }
-        .chart-title { font-size: 16px; font-weight: bold; margin-bottom: 15px; text-align: left; border-left: 4px solid var(--primary); padding-left: 5px;}
-        canvas { width: 100%; height: 200px; background-color: #fafafa; border-radius: 6px; }
-
-        .terminal-container {
-            background: #1e1e1e; color: #a4a4a4; border-radius: 12px; padding: 15px;
-            font-family: monospace; font-size: 12px; text-align: left;
-        }
-        .terminal-body { height: 120px; overflow-y: auto; white-space: pre-wrap; }
-        .log-line { margin-bottom: 4px; padding-left: 6px; border-left: 2px solid #444; }
+        /* 🚨 실시간 마커 알림 팝업 전용 스타일 */
+        .leaflet-popup-content-value { font-weight: bold; font-size: 14px; margin-top: 5px; }
     </style>
 </head>
 <body>
 
     <header>
-        <h1>🌱 스마트 팜 실시간 데이터 공유 방송국</h1>
-        <div class="subtitle">아두이노가 연결된 컴퓨터가 '방송 시작'을 하면 누구나 실시간으로 데이터를 시청합니다.</div>
+        <h1>🗺️ GIS 위치 기반 스마트 팜 관제 대시보드</h1>
+        <div class="subtitle">접속자의 스마트폰 GPS 연동 및 토양 상태별 실시간 마커 트래킹 시스템</div>
     </header>
 
-    <div class="status-bar" id="mqttStatus">☁️ 데이터 클라우드 서버 연결 중...</div>
+    <div id="map"></div>
 
-    <div class="controls">
-        <button id="connectBtn" class="btn">🔌 내 컴퓨터에 아두이노 연결 (방송하기)</button>
-    </div>
-
-    <div class="grid-container">
-        <div class="card">
-            <h3>💧 토양 습도</h3>
-            <div class="value moisture-text"><span id="moistureVal">-</span><span style="font-size: 28px;"> %</span></div>
-            <div class="unit">0% = 건조, 100% = 수분 가득</div>
-        </div>
-        <div class="card">
-            <h3>🌡️ 토양 온도</h3>
-            <div class="value temp-text"><span id="temperatureVal">-</span><span style="font-size: 28px;"> °C</span></div>
-            <div class="unit">섭씨 온도</div>
-        </div>
-    </div>
-
-    <div class="chart-container">
-        <div class="chart-title">📈 실시간 공유 데이터 트렌드</div>
-        <canvas id="dataChart"></canvas>
-    </div>
-
-    <div class="terminal-container">
-        <div style="color: #fff; margin-bottom: 8px; font-weight: bold;">📡 네트워크 데이터 스트리밍 로그</div>
-        <div class="terminal-body" id="terminalBody">서버로부터 전송되는 패킷을 기다리는 중...</div>
-    </div>
+    <div class="farm-grid" id="farmGrid"></div>
 
     <script>
-        // ⚠️ 중계 경로 채널 설정 (다른 사람과 겹치지 않게 본인만의 고유 키값 사용 가능)
-        const MQTT_TOPIC = "yousun/smartfarm/live_data"; 
+        const MQTT_TOPIC = "yousun/smartfarm/c3_multi";
+        const farmGrid = document.getElementById('farmGrid');
         
-        let port;
-        let reader;
-        let isBroadcaster = false; // 아두이노를 직접 연결한 방장인가?
+        let map;
+        let userLat = 37.5665; // GPS 차단 시 기본값 (서울시청 위도)
+        let userLng = 126.9780; // 기본 경도
+        
+        // 생성된 기기 마커 및 상태를 저장하는 맵 객체
+        const devices = {};
 
-        const maxDataPoints = 30;
-        const moistureHistory = [];
-        const temperatureHistory = [];
-        const canvas = document.getElementById('dataChart');
-        const ctx = canvas.getContext('2d');
+        // 1. 📍 브라우저 지오로케이션(GPS) API 호출 및 지도 초기화
+        if (navigator.geolocation) {
+            navigator.geolocation.getCurrentPosition((position) => {
+                userLat = position.coords.latitude;
+                userLng = position.coords.longitude;
+                initMap();
+            }, () => {
+                console.log("GPS 권한 거부됨. 기본 위치로 지도를 켭니다.");
+                initMap();
+            });
+        } else {
+            initMap();
+        }
 
-        function resizeCanvas() { canvas.width = canvas.clientWidth; canvas.height = canvas.clientHeight; drawChart(); }
-        window.addEventListener('resize', resizeCanvas);
-        setTimeout(resizeCanvas, 100);
-
-        // 1. 공용 클라우드 MQTT 브로커 연결 (보안 웹소켓 wss 사용)
-        const client = mqtt.connect('wss://broker.emqx.io:8084/mqtt');
-
-        client.on('connect', () => {
-            document.getElementById('mqttStatus').innerText = "🟢 클라우드 서버 연동 성공! 실시간 수신 대기 중...";
-            document.getElementById('mqttStatus').style.background = "#e8f5e9";
-            document.getElementById('mqttStatus').style.color = "#2e7d32";
+        function initMap() {
+            // Leaflet 지도 생성 및 내 위치 중심설정
+            map = L.map('map').setView([userLat, userLng], 16);
             
-            // 데이터 채널 구독 (다른 사람이 쏘는 데이터를 받기 위함)
-            client.subscribe(MQTT_TOPIC);
-        });
+            // 오픈스트리트맵 배경 타일 로드
+            L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+                attribution: '© OpenStreetMap contributors'
+            }).addTo(map);
 
-        // 2. 누군가 공중으로 데이터를 쏘았을 때 발생하는 이벤트 (학생 화면 작동)
+            // 현재 접속자 내 핸드폰 위치에 파란색 서클 마커 표시
+            L.circle([userLat, userLng], { radius: 15, color: '#1565c0', fillColor: '#2196f3', fillOpacity: 0.6 })
+             .addTo(map).bindPopup("<b>📍 현재 내 위치 (스마트폰)</b>").openPopup();
+        }
+
+        // 2. ☁️ MQTT 클라우드 서버 커넥션
+        const client = mqtt.connect('wss://broker.emqx.io:8084/mqtt');
+        client.on('connect', () => { client.subscribe(MQTT_TOPIC); });
+
         client.on('message', (topic, message) => {
             if (topic === MQTT_TOPIC) {
-                const line = message.toString().trim();
-                appendTerminal("클라우드 수신 ➔ " + line);
-                
-                // 내가 방장(송신자)이 아닐 때만 서버 데이터로 화면을 갱신
-                if (!isBroadcaster) {
-                    updateDashboard(line);
-                }
-            }
-        });
-
-        // 3. 내 컴퓨터에 아두이노 직접 연결할 때 (선생님/방장 전용)
-        document.getElementById('connectBtn').addEventListener('click', async () => {
-            if ('serial' in navigator) {
                 try {
-                    port = await navigator.serial.requestPort();
-                    await port.open({ baudRate: 9600 });
+                    const data = JSON.parse(message.toString().trim());
+                    if (!data.id) return;
                     
-                    isBroadcaster = true; // 방장 모드 활성화
-                    document.getElementById('connectBtn').innerText = "📡 실시간 데이터 방송 중...";
-                    document.getElementById('connectBtn').classList.add('connected');
-                    document.getElementById('mqttStatus').innerText = "👑 본 화면이 [호스트 방송국]입니다.";
-                    document.getElementById('mqttStatus').style.background = "#e3f2fd";
-                    document.getElementById('mqttStatus').style.color = "#1565c0";
-                    
-                    const textDecoder = new TextDecoderStream();
-                    port.readable.pipeTo(textDecoder.writable);
-                    reader = textDecoder.readable.getReader();
-
-                    let buffer = "";
-                    while (true) {
-                        const { value, done } = await reader.read();
-                        if (done) break;
-                        
-                        buffer += value;
-                        let lines = buffer.split("\n");
-                        buffer = lines.pop(); 
-
-                        for (let line of lines) {
-                            line = line.trim();
-                            if (line.length === 0) continue;
-
-                            appendTerminal("아두이노 센싱 ➔ " + line);
-                            
-                            // 내 대시보드 갱신
-                            updateDashboard(line);
-                            
-                            // ⭐ 핵심: 수신한 아두이노 날것의 데이터를 클라우드로 전송(Publish)하여 전 세계 공유
-                            client.publish(MQTT_TOPIC, line);
-                        }
-                    }
-                } catch (error) { alert("시리얼 연결 실패"); }
-            } else { alert("크롬 브라우저를 써주세요."); }
-        });
-
-        // 대시보드 파싱 및 업데이트 공통 함수
-        function updateDashboard(jsonStr) {
-            if (jsonStr.startsWith("{") && jsonStr.endsWith("}")) {
-                try {
-                    const data = JSON.parse(jsonStr);
-                    document.getElementById('moistureVal').innerText = data.moisture;
-                    if(data.temperature === -127 || data.temperature === 85) {
-                        document.getElementById('temperatureVal').innerText = "오류";
-                    } else {
-                        document.getElementById('temperatureVal').innerText = data.temperature.toFixed(1);
-                    }
-                    pushData(data.moisture, data.temperature);
-                    drawChart();
+                    // 데이터 가공 및 화면 동기화 실행
+                    processDeviceData(data);
                 } catch (e) { }
             }
+        });
+
+        // 3. 🛠️ 핵심 프로세서 : 마커 상태 색상 판별 및 맵 매핑
+        function processDeviceData(data) {
+            let statusColor = "#4caf50"; // 초록 기본값
+            let statusText = "충분 (Good)";
+
+            // 🔴 🟡 🟢 기준치에 따른 핀 컬러 동적 스위칭
+            if (data.moisture <= 30) {
+                statusColor = "#e53935"; // 빨강
+                statusText = "건조 (Warning)";
+            } else if (data.moisture <= 60) {
+                statusColor = "#ffb300"; // 노랑
+                statusText = "보통 (Moist)";
+            }
+
+            const tempDisplay = (data.temperature === -127 || data.temperature === 85) ? "오류" : `${data.temperature.toFixed(1)}°C`;
+
+            // 기기가 지지도 상에 처음 잡힌 경우 마커 좌표 생성
+            if (!devices[data.id]) {
+                // 한 강의실 안에서 여러 장치가 겹치는 현상을 막기 위해 GPS 반경에 미세한 난수 오프셋 배정
+                const offsetLat = userLat + (Math.random() - 0.5) * 0.0015;
+                const offsetLng = userLng + (Math.random() - 0.5) * 0.0015;
+
+                // 커스텀 원형 바늘핀 생성
+                const marker = L.circleMarker([offsetLat, offsetLng], {
+                    radius: 12,
+                    fillColor: statusColor,
+                    color: "#ffffff",
+                    weight: 2,
+                    fillOpacity: 0.9
+                }).addTo(map);
+
+                devices[data.id] = { marker: marker, lat: offsetLat, lng: offsetLng };
+            }
+
+            // 실시간 상태에 맞춰 마커의 색상 갱신 및 팝업창 정보 바인딩
+            devices[data.id].marker.setStyle({ fillColor: statusColor });
+            devices[data.id].marker.bindPopup(`
+                <div style="font-family:sans-serif;">
+                    <b style="font-size:14px; color:#263238;">🪴 장치 ID: ${data.id}</b><br>
+                    <div class="leaflet-popup-content-value" style="color:${statusColor};">상태: ${statusText}</div>
+                    <hr style="margin:5px 0; border:none; border-top:1px solid #eee;">
+                    습도: <b>${data.moisture}%</b> | 온도: <b>${tempDisplay}</b>
+                </div>
+            `);
+
+            // 하단 바둑판 카드 레이아웃 업데이트
+            updateCardUI(data, statusColor, statusText, tempDisplay);
         }
 
-        function appendTerminal(text) {
-            const body = document.getElementById('terminalBody');
-            const lineEl = document.createElement('div');
-            lineEl.className = 'log-line';
-            const now = new Date();
-            lineEl.innerHTML = `<span style="color:#888">[${now.toLocaleTimeString()}]</span> ${text}`;
-            body.appendChild(lineEl);
-            body.scrollTop = body.scrollHeight;
-        }
+        function updateCardUI(data, statusColor, statusText, tempDisplay) {
+            const cardId = `card-${btoa(encodeURIComponent(data.id)).replace(/=/g, '')}`;
+            let cardNode = document.getElementById(cardId);
 
-        function pushData(moisture, temp) {
-            if (moistureHistory.length >= maxDataPoints) moistureHistory.shift();
-            if (temperatureHistory.length >= maxDataPoints) temperatureHistory.shift();
-            moistureHistory.push(moisture);
-            temperatureHistory.push((temp === -127 || temp === 85) ? null : temp);
-        }
-
-        function drawChart() {
-            const w = canvas.width; const h = canvas.height;
-            ctx.clearRect(0, 0, w, h);
-            if (moistureHistory.length === 0) return;
-
-            const padding = 35; const graphW = w - padding * 2; const graphH = h - padding * 2;
-            ctx.strokeStyle = "#eceff1"; ctx.lineWidth = 1;
-            for(let i=0; i<=4; i++) {
-                let y = padding + (graphH / 4) * i;
-                ctx.beginPath(); ctx.moveTo(padding, y); ctx.lineTo(w - padding, y); ctx.stroke();
+            if (!cardNode) {
+                cardNode = document.createElement('div');
+                cardNode.id = cardId;
+                cardNode.className = 'student-card';
+                farmGrid.appendChild(cardNode);
             }
-            const stepX = graphW / (maxDataPoints - 1);
 
-            // 습도선
-            ctx.beginPath(); ctx.strokeStyle = "#0288d1"; ctx.lineWidth = 3;
-            for (let i = 0; i < moistureHistory.length; i++) {
-                const ratio = moistureHistory[i] / 100;
-                const x = padding + i * stepX; const y = padding + graphH - (ratio * graphH);
-                if (i === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
-            }
-            ctx.stroke();
-
-            // 온도선
-            ctx.beginPath(); ctx.strokeStyle = "#e65100"; ctx.lineWidth = 3;
-            let firstPoint = true;
-            for (let i = 0; i < temperatureHistory.length; i++) {
-                const val = temperatureHistory[i]; if (val === null) continue;
-                const ratio = Math.max(0, Math.min(50, val)) / 50;
-                const x = padding + i * stepX; const y = padding + graphH - (ratio * graphH);
-                if (firstPoint) { ctx.moveTo(x, y); firstPoint = false; } else ctx.lineTo(x, y);
-            }
-            ctx.stroke();
+            cardNode.style.borderTopColor = statusColor;
+            cardNode.innerHTML = `
+                <div class="student-name">
+                    <span>🪴 ${data.id}</span>
+                    <span class="status-badge" style="background:${statusColor}">${statusText}</span>
+                </div>
+                <div class="data-row">
+                    <span class="data-label">💧 토양 습도</span>
+                    <span class="data-value" style="color:#0288d1;">${data.moisture} %</span>
+                </div>
+                <div class="data-row">
+                    <span class="data-label">🌡️ 토양 온도</span>
+                    <span class="data-value" style="color:#e65100;">${tempDisplay}</span>
+                </div>
+            `;
         }
     </script>
 </body>
