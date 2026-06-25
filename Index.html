@@ -48,9 +48,10 @@
         .student-name { font-size: 18px; font-weight: bold; margin-bottom: 16px; color: #263238; display: flex; justify-content: space-between; align-items: center; }
         .status-tag { font-size: 11px; padding: 3px 9px; border-radius: 12px; color: white; font-weight: bold; }
         
-        .data-row { display: flex; justify-content: space-between; margin-bottom: 12px; padding-bottom: 8px; border-bottom: 1px dashed #f0f0f0; }
+        .data-row { display: flex; justify-content: space-between; margin-bottom: 12px; padding-bottom: 8px; border-bottom: 1px dashed #f0f0f0; align-items: center; }
         .data-label { font-size: 14px; color: #78909c; }
         .data-value { font-size: 24px; font-weight: bold; }
+        .time-value { font-size: 13px; font-weight: 600; color: #546e7a; text-align: right; }
 
         .terminal-container {
             background: #1a1a1a; color: #90a4ae; border-radius: 14px; padding: 18px;
@@ -129,6 +130,7 @@
 
                     const tempStr = (data.temperature === -127 || data.temperature === 85) ? "센서 확인" : `${data.temperature.toFixed(1)}°C`;
 
+                    // 최초 연결 시 시간 기록 및 객체 생성
                     if (!activeDevices[data.id]) {
                         const rLat = userLat + (Math.random() - 0.5) * 0.0016;
                         const rLng = userLng + (Math.random() - 0.5) * 0.0016;
@@ -137,14 +139,22 @@
                             radius: 11, fillColor: config.color, color: "#ffffff", weight: 2, fillOpacity: 0.9
                         }).addTo(map);
 
-                        activeDevices[data.id] = { marker: marker };
+                        activeDevices[data.id] = { 
+                            marker: marker,
+                            connectedAt: new Date() // 최초 연결 시간 기록
+                        };
                         
                         const totalConnected = Object.keys(activeDevices).length;
                         studentCounter.innerText = `🌿 활성화된 Leir 노드: ${totalConnected}대`;
                     }
                     
-                    activeDevices[data.id].marker.setStyle({ fillColor: config.color });
-                    activeDevices[data.id].marker.bindPopup(`<b>📦 기기 노드: ${data.id}</b><br><span style="color:${config.color}; font-weight:bold;">상태: ${config.text}</span><br>습도: ${data.moisture}% / 온도: ${tempStr}`);
+                    const device = activeDevices[data.id];
+                    const localTime = device.connectedAt.toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false });
+                    const utcTime = device.connectedAt.toISOString().substring(11, 19) + " UTC";
+                    const durationStr = getDurationString(device.connectedAt);
+
+                    device.marker.setStyle({ fillColor: config.color });
+                    device.marker.bindPopup(`<b>📦 기기 노드: ${data.id}</b><br><span style="color:${config.color}; font-weight:bold;">상태: ${config.text}</span><br>습도: ${data.moisture}% / 온도: ${tempStr}<br><small>🕒 연결: ${localTime} (${utcTime})</small>`);
 
                     updateStudentCardPage(data, config, tempStr);
 
@@ -163,6 +173,12 @@
                 farmGrid.appendChild(cardElement); 
             }
 
+            const device = activeDevices[data.id];
+            // 현지 시간(24H 포맷) 및 표준시(UTC) 변환
+            const localTime = device.connectedAt.toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false });
+            const utcTime = device.connectedAt.toISOString().substring(11, 19) + " UTC";
+            const currentDuration = getDurationString(device.connectedAt);
+
             cardElement.style.borderTopColor = config.color;
             cardElement.innerHTML = `
                 <div class="student-name">
@@ -177,8 +193,43 @@
                     <span class="data-label">🌡️ 토양 온도</span>
                     <span class="data-value" style="color:#e65100;">${tempStr}</span>
                 </div>
+                <div class="data-row" style="align-items: flex-start; flex-direction: column; gap: 4px;">
+                    <span class="data-label">🕒 최초 연결 시간</span>
+                    <span class="time-value" style="text-align: left;">${localTime} (현지) / ${utcTime}</span>
+                </div>
+                <div class="data-row">
+                    <span class="data-label">⏳ 연결 유지 시간</span>
+                    <span id="${domId}-duration" class="data-value" style="font-size: 16px; color: var(--accent);">${currentDuration}</span>
+                </div>
             `;
         }
+
+        // 경과 시간을 문자열로 계산하는 함수
+        function getDurationString(connectedAt) {
+            const diffMs = new Date() - connectedAt;
+            const diffSec = Math.floor(diffMs / 1000);
+            const min = Math.floor(diffSec / 60);
+            const sec = diffSec % 60;
+            const hrs = Math.floor(min / 60);
+            const displayMin = min % 60;
+
+            let result = "";
+            if (hrs > 0) result += `${hrs}시간 `;
+            if (min > 0 || hrs > 0) result += `${displayMin}분 `;
+            result += `${sec}초`;
+            return result;
+        }
+
+        // 1초마다 모든 카드의 연결 유지 시간을 실시간으로 업데이트하는 타이머
+        setInterval(() => {
+            for (const id in activeDevices) {
+                const domId = `leir-card-${btoa(encodeURIComponent(id)).replace(/=/g, '')}`;
+                const durationElement = document.getElementById(`${domId}-duration`);
+                if (durationElement) {
+                    durationElement.innerText = getDurationString(activeDevices[id].connectedAt);
+                }
+            }
+        }, 1000);
 
         function appendLog(text) {
             const now = new Date();
